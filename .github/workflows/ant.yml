@@ -1,7 +1,5 @@
 name: Build Extension (App Inventor)
 
-# Perintah ini bikin build otomatis jalan pas lu nge-save (push) 
-# dan nambahin tombol jalanin manual (workflow_dispatch)
 on:
   push:
     branches: [ "main", "master" ]
@@ -13,24 +11,21 @@ jobs:
 
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: recursive
 
-    # App Inventor / Kodular butuh Java 8 buat nge-build ekstensi
     - name: Set up JDK 8
-      uses: actions/setup-java@v3
+      uses: actions/setup-java@v4
       with:
         java-version: '8'
         distribution: 'temurin'
 
-    # Jalankan perintah Apache Ant untuk build extension
     - name: Build with Ant
       run: ant extensions
 
-    # Simpan hasil jadinya (.aix) biar bisa lu download dari HP
     - name: Upload AIX Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: Hasil-Ekstensi-AIX
         path: out/*.aix
