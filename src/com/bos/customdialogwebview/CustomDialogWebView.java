@@ -3,7 +3,10 @@ package com.bos.customdialogwebview;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.os.Build;
+import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -12,6 +15,8 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
+import android.widget.TextView;
 
 import com.google.appinventor.components.annotations.DesignerComponent;
 import com.google.appinventor.components.annotations.SimpleEvent;
@@ -22,7 +27,7 @@ import com.google.appinventor.components.runtime.AndroidNonvisibleComponent;
 import com.google.appinventor.components.runtime.ComponentContainer;
 import com.google.appinventor.components.runtime.EventDispatcher;
 
-@DesignerComponent(version = 1, description = "Dialog WebView Fullscreen Anti-Scroll & No Zoom", category = com.google.appinventor.components.common.ComponentCategory.EXTENSION, nonVisible = true, iconName = "images/extension.png")
+@DesignerComponent(version = 3, description = "Dialog WebView Cerdas: Tombol Close Muncul Saat Pindah URL", category = com.google.appinventor.components.common.ComponentCategory.EXTENSION, nonVisible = true, iconName = "images/extension.png")
 @SimpleObject(external = true)
 public class CustomDialogWebView extends AndroidNonvisibleComponent {
     private Context context;
@@ -30,6 +35,10 @@ public class CustomDialogWebView extends AndroidNonvisibleComponent {
     private WebView webView;
     private String webViewString = "";
     private String customUserAgent = "";
+    
+    // Variabel baru untuk fitur tombol cerdas
+    private TextView closeBtn;
+    private String defaultUrl = "";
 
     public CustomDialogWebView(ComponentContainer container) {
         super(container.$form());
@@ -38,7 +47,10 @@ public class CustomDialogWebView extends AndroidNonvisibleComponent {
 
     @SimpleFunction(description = "Tampilkan Dialog Fullscreen dan Load URL")
     public void ShowDialog(String url) {
-        // 1. Setup Dialog Full Screen + Immersive Mode (Tanpa Status Bar / Header)
+        // Simpan URL awal sebagai patokan (default)
+        this.defaultUrl = url;
+
+        // 1. Setup Dialog Full Screen + Immersive Mode
         dialog = new Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         
@@ -57,36 +69,80 @@ public class CustomDialogWebView extends AndroidNonvisibleComponent {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-
-        // --- MATIKAN ZOOM ---
         settings.setSupportZoom(false);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
 
-        // Set Custom User Agent
         if (!customUserAgent.isEmpty()) {
             settings.setUserAgentString(customUserAgent);
         }
 
-        // 3. Fitur Anti-Scroll (Blokir geser vertikal/horizontal)
         webView.setVerticalScrollBarEnabled(false);
         webView.setHorizontalScrollBarEnabled(false);
         webView.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-                // Return true kalau action-nya move (menggagalkan scroll)
                 return (event.getAction() == MotionEvent.ACTION_MOVE);
             }
         });
 
-        // 4. Inject Javascript Interface ("Android")
-        webView.setWebViewClient(new WebViewClient());
-        webView.addJavascriptInterface(new WebAppInterface(), "Android");
+        // 3. Setup Layout dan Tombol
+        FrameLayout mainLayout = new FrameLayout(context);
+        FrameLayout.LayoutParams webViewParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT);
+        mainLayout.addView(webView, webViewParams);
 
-        // Set view ke dialog
-        dialog.setContentView(webView, new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT));
+        // Bikin Tombol Close
+        closeBtn = new TextView(context);
+        closeBtn.setText("✕");
+        closeBtn.setTextSize(24);
+        closeBtn.setTextColor(Color.WHITE);
+        closeBtn.setBackgroundColor(Color.parseColor("#4D000000")); 
+        closeBtn.setPadding(35, 15, 35, 15);
+        
+        // SETTING CERDAS: Sembunyikan tombol di awal
+        closeBtn.setVisibility(View.GONE);
+
+        FrameLayout.LayoutParams btnParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        btnParams.gravity = Gravity.TOP | Gravity.RIGHT;
+        btnParams.setMargins(0, 40, 40, 0); 
+        closeBtn.setLayoutParams(btnParams);
+
+        closeBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                CloseDialog();
+            }
+        });
+
+        mainLayout.addView(closeBtn);
+        dialog.setContentView(mainLayout);
+
+        // 4. Logika Kecerdasan Pindah URL (WebViewClient)
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String currentUrl, Bitmap favicon) {
+                super.onPageStarted(view, currentUrl, favicon);
+                
+                if (currentUrl != null && defaultUrl != null) {
+                    // Bersihkan slash (garis miring) di ujung URL biar perbandingannya akurat
+                    String cleanCurrent = currentUrl.replaceAll("/$", "");
+                    String cleanDefault = defaultUrl.replaceAll("/$", "");
+                    
+                    // Kalau URL saat ini BEDA dengan URL awal
+                    if (!cleanCurrent.equals(cleanDefault)) {
+                        closeBtn.setVisibility(View.VISIBLE); // Munculkan tombol
+                    } else {
+                        closeBtn.setVisibility(View.GONE); // Sembunyikan kalau balik ke URL awal
+                    }
+                }
+            }
+        });
+
+        webView.addJavascriptInterface(new WebAppInterface(), "Android");
 
         // Load URL
         webView.loadUrl(url);
@@ -120,7 +176,6 @@ public class CustomDialogWebView extends AndroidNonvisibleComponent {
 
     @SimpleEvent(description = "Terpicu saat Web mengirim sinyal melalui Android.KirimSinyal.")
     public void SinyalDiterima(final String data) {
-        // Dijalankan di UI Thread biar aman buat Kodular
         ((Activity) context).runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -129,10 +184,7 @@ public class CustomDialogWebView extends AndroidNonvisibleComponent {
         });
     }
 
-    // Class untuk menjembatani Javascript (Web) ke Java (Kodular)
     private class WebAppInterface {
-        
-        // Fungsi JS yang dipanggil pakai: Android.KirimSinyal("data");
         @JavascriptInterface
         public void KirimSinyal(String data) {
             SinyalDiterima(data);
